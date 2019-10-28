@@ -1,8 +1,10 @@
 #include "thor/bidirectional_astar.h"
 #include "baldr/datetime.h"
 #include "baldr/directededge.h"
+#include "baldr/graphconstants.h"
 #include "baldr/graphid.h"
 #include "baldr/graphtile.h"
+#include "midgard/encoded.h"
 #include "midgard/logging.h"
 #include <algorithm>
 #include <map>
@@ -15,105 +17,114 @@ using std::vector;
 namespace valhalla {
 namespace thor {
 
-// TODO Improve naming
-// template <typename edge_labels_container_t>
+std::string get_shape(GraphReader& graphreader, const GraphId& edgeid) {
+  const GraphTile* t_debug = graphreader.GetGraphTile(edgeid);
+  const DirectedEdge* directedEdge = t_debug->directededge(edgeid);
+  auto shape = t_debug->edgeinfo(directedEdge->edgeinfo_offset()).shape();
+  if (!directedEdge->forward()) {
+    std::reverse(shape.begin(), shape.end());
+  }
+  return midgard::encode(shape);
+}
+
 bool is_derived_deadend(GraphReader& graphreader,
-                        const GraphTile*& tile_org,
-                        const BDEdgeLabel& pred,
-                        // const GraphId edge_id,
+                        const GraphTile* tile,
+                        const BDEdgeLabel& pred_edge_label,
                         const std::shared_ptr<sif::DynamicCost>& costing,
-                        // const edge_labels_container_t &edgelabels_forward
                         const vector<sif::BDEdgeLabel>& edgelabels,
                         bool is_forward_search) {
-  // Contracts:
-  // 1. Tile should not be nullptr
-  // 2. tile should contain pred edge
 
-  auto check_neighbors = [&graphreader, &edgelabels, &costing, &pred,
-                          &is_forward_search](const GraphTile*& tile_org, const GraphId& node_id,
-                                              const DirectedEdge*& valid_edge) {
-    uint16_t num_valid_neighbors = 0;
-    for (const auto& outgoing_candidate_edge : tile_org->GetDirectedEdges(pred.endnode())) {
+  if (is_forward_search) {
+    // std::cout << "forward: " << pred_edge_label.edgeid().value << "    "
+    //     << get_shape(graphreader, pred_edge_label.edgeid()) << std::endl;
+  } else {
+    std::cout << "backward " << uint64_t(pred_edge_label.endnode()) << "\t"
+              << pred_edge_label.edgeid().value << "\t"
+              << get_shape(graphreader, pred_edge_label.edgeid()) << std::endl;
+  }
 
-      GraphId outgoing_candidate_edge_id = tile_org->header()->graphid();
-      outgoing_candidate_edge_id.set_id(&outgoing_candidate_edge - tile_org->directededge(0));
+  // std::array<const GraphTile*, 5> sibling_tiles{};
+  // sibling_tiles[0] = tile;
+  // int idx = 0;
+  // for (const auto& sibling_node : tile->GetNodeTransitions(tile->node(pred_edge_label.endnode())))
+  // {
+  //  sibling_tiles[++idx] = graphreader.GetGraphTile(sibling_node.endnode());
+  //}
 
-      const NodeInfo* nodeinfo = tile_org->node(node_id);
-      GraphId edge_id = {node_id.tileid(), node_id.level(), nodeinfo->edge_index()};
+  // for (const GraphTile* tile : sibling_tiles) {
+  {
+    auto sibling_node = pred_edge_label.endnode();
+    // if (tile == nullptr) {
+    //  std::cout << "nullptr"<< std::endl;
+    //  break;
+    //}
 
-      bool is_restricted = costing->Restricted(&outgoing_candidate_edge, pred, edgelabels, tile_org,
-                                               edge_id, is_forward_search, 0, 0);
+    for (const auto& outgoing_candidate_edge : tile->GetDirectedEdges(pred_edge_label.endnode())) {
+      GraphId outgoing_edge_id = tile->header()->graphid();
+      outgoing_edge_id.set_id(&outgoing_candidate_edge - tile->directededge(0));
+      if (!is_forward_search) {
+        std::cout << "  "<<uint64_t(pred_edge_label.endnode())<<" Checking out " << uint64_t(outgoing_candidate_edge.endnode())
+          << " edgeid: "<<uint64_t(outgoing_edge_id)<<"  "<<get_shape(graphreader, outgoing_edge_id) << std::endl;
+      }
+      bool is_restricted = costing->Restricted(&outgoing_candidate_edge, pred_edge_label, edgelabels,
+                                               tile, outgoing_edge_id, is_forward_search, 0, 0);
       if (is_restricted) {
+        if (!is_forward_search) {
+          std::cout << "    "<<uint64_t(pred_edge_label.endnode())<<"is_restricted" << std::endl;
+        }
         continue;
       }
-      const DirectedEdge* candidate_edge = &outgoing_candidate_edge;
+
       if (is_forward_search) {
-        bool is_allowed = costing->Allowed(&outgoing_candidate_edge, pred, tile_org, edge_id, 0, 0);
+        bool is_allowed =
+            costing->Allowed(&outgoing_candidate_edge, pred_edge_label, tile, outgoing_edge_id, 0, 0);
         if (!is_allowed) {
+          // std::cout << "!is_allowed"<< std::endl;
           continue;
         }
 
-        if (edge_id == pred.opp_edgeid()) {
+        if (outgoing_edge_id == pred_edge_label.opp_edgeid()) {
+          // std::cout << "edge equal to incoming" << std::endl;
           continue;
         }
-        return edge_id;
+
+        return false;
       } else {
         // In reverse search, we need to convert the outgoing edge
         // into the incoming edge
-        const GraphTile* outgoing_candidate_tile =
-            outgoing_candidate_edge.leaves_tile()
-                ? graphreader.GetGraphTile(outgoing_candidate_edge.endnode())
-                : tile_org;
-        GraphId incoming_edge_id = tile_org->GetOpposingEdgeId(&outgoing_candidate_edge);
+        const GraphTile* tile2 = nullptr;
         const DirectedEdge* incoming_candidate_edge =
-            outgoing_candidate_tile->directededge(incoming_edge_id);
+            graphreader.GetOpposingEdge(outgoing_edge_id, tile2);
+        GraphId incoming_edge_id = tile2->header()->graphid();
+        incoming_edge_id.set_id(incoming_candidate_edge - tile2->directededge(0));
+        bool is_allowed =
+            costing->AllowedReverse(&outgoing_candidate_edge, pred_edge_label,
+                                    incoming_candidate_edge, tile2, incoming_edge_id, 0, 0);
+        if (outgoing_edge_id == 1784899370) {
+          std::cout << "  THIS SHOULD BE ONE-WAY which should result in deadend which should result in u-turn" ;
+          std::cout << "  is_allowed"<< is_allowed<< "  forward_access()" << (incoming_candidate_edge->forwardaccess() & kAutoAccess)
+<< "  reverse_access()" << (incoming_candidate_edge->reverseaccess() & kAutoAccess)
+            << "  restrictions "<<(incoming_candidate_edge->restrictions() & (1 << pred_edge_label.opp_local_idx()))<< std::endl;
+          std::cout << "  incoming_edge_id: "<<uint64_t(incoming_edge_id)<<std::endl;
 
-        bool is_allowed = costing->AllowedReverse(&outgoing_candidate_edge, pred, incoming_candidate_edge,
-                                             outgoing_candidate_tile, incoming_edge_id, 0, 0);
+        }
         if (!is_allowed) {
+          std::cout << "    "<<uint64_t(pred_edge_label.endnode())<<" not allowed "<<std::endl;
           continue;
         }
-        if (incoming_edge_id == pred.edgeid()) {
+
+
+        std::cout << "    "<<uint64_t(pred_edge_label.endnode())<<" comparing edge labels " << incoming_edge_id << " / "<<pred_edge_label.edgeid() <<std::endl;
+        if (incoming_edge_id == pred_edge_label.edgeid()) {
+          std::cout << "    "<<uint64_t(pred_edge_label.endnode())<<"edge equal to pred_edge_label" << std::endl;
           continue;
         }
-        return incoming_edge_id;
+
+        return false;
       }
     }
-    //if (num_valid_neighbors == 1) {
-    //  // Breakpoint line (remove in cleanup)
-    //  int x = 0;
-    //}
-    //return num_valid_neighbors;
-    return GraphId{};
-  };
-
-  uint16_t num_valid_neighbors = 0;
-  const DirectedEdge* valid_edge = nullptr;
-
-  // Count endnode's neighbors
-  // Check edges on current level
-  GraphId candidate_edge = check_neighbors(tile_org, pred.endnode(), valid_edge);
-
-  // If we didn't find any valid edge, it means that this must be a deadend
-  return !candidate_edge.Is_Valid();
-
-  //// TODO Enable Check edges on other levels
-  //for (const auto& sibling_node : tile_org->GetNodeTransitions(pred.endnode())) {
-  //  const GraphTile* tile = graphreader.GetGraphTile(sibling_node.endnode());
-  //  num_valid_neighbors += check_neighbors(tile, sibling_node.endnode(), valid_edge);
-  //}
-
-  //return num_valid_neighbors == 1;
-  //// If only one neighbor, check if opposing edge to pred_edge
-  // if (num_valid_neighbors == 1) {
-  //  if (is_forward_search) {
-  //    return pred.opp_local_idx() == valid_edge->localedgeidx();
-  //  } else {
-  //    return pred.opp_local_idx() == valid_edge->localedgeidx();
-  //  }
-  //} else {
-  //  return false;
-  //}
+  }
+  return true;
 }
 
 constexpr uint64_t kInitialEdgeLabelCountBD = 1000000;
@@ -251,9 +262,7 @@ void BidirectionalAStar::ExpandForward(GraphReader& graphreader,
     bool is_uturn = pred.opp_local_idx() == directededge->localedgeidx();
     bool is_restricted =
         costing_->Restricted(directededge, pred, edgelabels_forward_, tile, edgeid, true);
-    if (edge_status->set() == EdgeSet::kPermanent
-        || !is_allowed
-        || is_restricted) {
+    if (edge_status->set() == EdgeSet::kPermanent || !is_allowed || is_restricted) {
       continue;
     }
 
@@ -296,7 +305,8 @@ void BidirectionalAStar::ExpandForward(GraphReader& graphreader,
                                      (pred.not_thru_pruning() || !directededge->not_thru()));
 
     // Check if the node in question is a deadend
-    bool is_deadend = is_derived_deadend(graphreader, tile, pred, costing_, edgelabels_forward_, true);
+    bool is_deadend =
+        is_derived_deadend(graphreader, tile, pred, costing_, edgelabels_forward_, true);
     edgelabels_forward_.back().set_deadend(is_deadend);
 
     adjacencylist_forward_->add(idx);
@@ -347,6 +357,12 @@ void BidirectionalAStar::ExpandReverse(GraphReader& graphreader,
   EdgeStatusInfo* es = edgestatus_reverse_.GetPtr(edgeid, tile);
   const DirectedEdge* directededge = tile->directededge(edgeid);
   for (uint32_t i = 0; i < nodeinfo->edge_count(); ++i, ++directededge, ++edgeid, ++es) {
+
+    //if (edgeid == 1784899370)
+    if (edgeid == 1919117098)
+    {
+      std::cout << "OUTER FUNC expanding oneway street"<<std::endl;
+    }
     // Skip shortcut edges until we have stopped expanding on the next level. Use regular
     // edges while still expanding on the next level since we can still transition down to
     // that level. If using a shortcut, set the shortcuts mask. Skip if this is a regular
@@ -370,7 +386,7 @@ void BidirectionalAStar::ExpandReverse(GraphReader& graphreader,
     // Get end node tile, opposing edge Id, and opposing directed edge.
     const GraphTile* t2 =
         directededge->leaves_tile() ? graphreader.GetGraphTile(directededge->endnode()) : tile;
-    //if (t2 == nullptr) {
+    // if (t2 == nullptr) {
     //  continue;
     //}
     GraphId oppedge_graph_id = t2->GetOpposingEdgeId(directededge);
@@ -383,10 +399,7 @@ void BidirectionalAStar::ExpandReverse(GraphReader& graphreader,
     bool is_restricted =
         costing_->Restricted(directededge, pred, edgelabels_reverse_, tile, edgeid, false);
     bool is_uturn = pred.opp_local_idx() == directededge->localedgeidx();
-    if (
-        !(
-          is_allowed && !is_uturn )
-        || is_restricted) {
+    if (!(is_allowed && !is_uturn) || is_restricted) {
       continue;
     }
 
@@ -424,7 +437,9 @@ void BidirectionalAStar::ExpandReverse(GraphReader& graphreader,
                                      (pred.not_thru_pruning() || !directededge->not_thru()));
 
     // Check if the node in question is a deadend
-    bool is_deadend = is_derived_deadend(graphreader, tile, pred, costing_, edgelabels_reverse_, false);
+    bool is_deadend =
+        is_derived_deadend(graphreader, tile, pred, costing_, edgelabels_reverse_, false);
+    std::cout << " is_deadend:" << is_deadend << std::endl;
     edgelabels_reverse_.back().set_deadend(is_deadend);
 
     adjacencylist_reverse_->add(idx);
