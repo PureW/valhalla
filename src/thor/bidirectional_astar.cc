@@ -105,23 +105,23 @@ bool is_derived_deadend(GraphReader& graphreader,
           GraphId incoming_edge_id = outgoing_candidate_tile->header()->graphid();
           incoming_edge_id.set_id(incoming_candidate_edge - outgoing_candidate_tile->directededge(0));
 
-        if (outgoing_edge_id == 1952671530 || incoming_edge_id == 1952671530) { // 1919117098) {
-          std::cout
-              << "#################\n  FORWARD-SEARCH"
-              << "\n   THIS SHOULD BE ONE-WAY which should result in deadend which should result in u-turn";
+        //if (outgoing_edge_id == 1952671530 || incoming_edge_id == 1952671530) { // 1919117098) {
+        //  std::cout
+        //      << "#################\n  FORWARD-SEARCH"
+        //      << "\n   THIS SHOULD BE ONE-WAY which should result in deadend which should result in u-turn";
 
-          std::cout << "  is_allowed" << is_allowed
-                    << "\n  incoming_edge_id: " << uint64_t(incoming_edge_id) << "  "<< get_shape(graphreader, incoming_edge_id)
-                    << "\n  incoming_candidate_edge.forward_access() "<< (incoming_candidate_edge->forwardaccess() & mask)
-                    << "\n  incoming_candidate_edge.reverse_access() "<< (incoming_candidate_edge->reverseaccess() & mask)
+        //  std::cout << "  is_allowed" << is_allowed
+        //            << "\n  incoming_edge_id: " << uint64_t(incoming_edge_id) << "  "<< get_shape(graphreader, incoming_edge_id)
+        //            << "\n  incoming_candidate_edge.forward_access() "<< (incoming_candidate_edge->forwardaccess() & mask)
+        //            << "\n  incoming_candidate_edge.reverse_access() "<< (incoming_candidate_edge->reverseaccess() & mask)
 
-                    << "\n  outgoing_edge_id: " << uint64_t(outgoing_edge_id) << "  "<< get_shape(graphreader, outgoing_edge_id)
-                    << "\n  outgoing_candidate_edge.forward_access() "<< (outgoing_candidate_edge.forwardaccess() & mask)
-                    << "\n  outgoing_candidate_edge.reverse_access() "<< (outgoing_candidate_edge.reverseaccess() & mask)
+        //            << "\n  outgoing_edge_id: " << uint64_t(outgoing_edge_id) << "  "<< get_shape(graphreader, outgoing_edge_id)
+        //            << "\n  outgoing_candidate_edge.forward_access() "<< (outgoing_candidate_edge.forwardaccess() & mask)
+        //            << "\n  outgoing_candidate_edge.reverse_access() "<< (outgoing_candidate_edge.reverseaccess() & mask)
 
-                    << "\n  pred_edge_id "<<uint64_t(pred_edge_label.edgeid())
-                    << "\n#########################" << std::endl;
-        }
+        //            << "\n  pred_edge_id "<<uint64_t(pred_edge_label.edgeid())
+        //            << "\n#########################" << std::endl;
+        //}
         if (!is_allowed) {
           // std::cout << "!is_allowed"<< std::endl;
           continue;
@@ -427,9 +427,9 @@ void BidirectionalAStar::ExpandReverse(GraphReader& graphreader,
   const DirectedEdge* directededge = tile->directededge(edgeid);
   for (uint32_t i = 0; i < nodeinfo->edge_count(); ++i, ++directededge, ++edgeid, ++es) {
 
-    std::cout << "ExpandReverse: directededge->endnode(): "<< uint64_t(directededge->endnode()) << " edgeid: "<<uint64_t(edgeid)
-      <<"\n pred "<<get_shape(graphreader, pred.edgeid())<<" edgeid "<<get_shape(graphreader, edgeid)
-      <<std::endl;
+    //std::cout << "ExpandReverse: directededge->endnode(): "<< uint64_t(directededge->endnode()) << " edgeid: "<<uint64_t(edgeid)
+    //  <<"\n pred "<<get_shape(graphreader, pred.edgeid())<<" edgeid "<<get_shape(graphreader, edgeid)
+    //  <<std::endl;
 
     // Skip shortcut edges until we have stopped expanding on the next level. Use regular
     // edges while still expanding on the next level since we can still transition down to
@@ -610,6 +610,10 @@ BidirectionalAStar::GetBestPath(valhalla::Location& origin,
         // result in other connections.
         if (edgestatus_reverse_.Get(fwd_pred.opp_edgeid()).set() == EdgeSet::kPermanent) {
           if (SetForwardConnection(graphreader, fwd_pred)) {
+            std::cout << "$$$$$$$$$$$$$$$$$$$$$$$   SetForwardConnection "
+              << uint64_t(fwd_pred.opp_edgeid())
+              << "  "<<get_shape(graphreader, fwd_pred.opp_edgeid())
+              <<std::endl;
             continue;
           }
         }
@@ -640,6 +644,10 @@ BidirectionalAStar::GetBestPath(valhalla::Location& origin,
         // result in other connections.
         if (edgestatus_forward_.Get(rev_pred.opp_edgeid()).set() == EdgeSet::kPermanent) {
           if (SetReverseConnection(graphreader, rev_pred)) {
+            std::cout << "$$$$$$$$$$$$$$$$$$$$$$$   SetReverseConnection "
+              << uint64_t(rev_pred.opp_edgeid())
+              << "  "<<get_shape(graphreader, rev_pred.opp_edgeid())
+              <<std::endl;
             continue;
           }
         }
