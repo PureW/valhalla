@@ -114,11 +114,11 @@ void test_deadend() {
 
   route_tester tester;
   std::string request =
-       R"({"locations":[{"lat":51.45562646682483,"lon":-2.5952598452568054},{"lat":51.455143447135974,"lon":-2.5958767533302307}],"costing":"auto"})";
-      // Test onewayness with this route - oneway works, South-West to North-East
-      //R"({"locations":[{"lat":51.455768530466514,"lon":-2.5954368710517883},{"lat":51.456082740244824,"lon":-2.595050632953644}],"costing":"auto"})";
+      R"({"locations":[{"lat":51.45562646682483,"lon":-2.5952598452568054},{"lat":51.455143447135974,"lon":-2.5958767533302307}],"costing":"auto"})";
+  // Test onewayness with this route - oneway works, South-West to North-East
+  // R"({"locations":[{"lat":51.455768530466514,"lon":-2.5954368710517883},{"lat":51.456082740244824,"lon":-2.595050632953644}],"costing":"auto"})";
   // Test onewayness with this route - oneway wrong way, North-east to South-West
-   //R"({"locations":[{"lat":51.456082740244824,"lon":-2.595050632953644},{"lat":51.455768530466514,"lon":-2.5954368710517883}],"costing":"auto"})";
+  // R"({"locations":[{"lat":51.456082740244824,"lon":-2.595050632953644},{"lat":51.455768530466514,"lon":-2.5954368710517883}],"costing":"auto"})";
 
   auto response = tester.test(request);
 
@@ -151,13 +151,10 @@ void test_deadend() {
     }
   }
 
-  auto correct_route = std::vector<std::string>{"Bell Lane",
-                                                "Small Street",
+  auto correct_route = std::vector<std::string>{"Bell Lane", "Small Street",
                                                 //"Quay Street",
                                                 //"Quay Street",
-                                                "Small Street",
-                                                "",
-                                                ""};
+                                                "Small Street", "", ""};
   if (names != correct_route) {
     throw std::logic_error("Incorrect route, got: \n" + boost::algorithm::join(names, ", ") +
                            ", expected: \n" + boost::algorithm::join(correct_route, ", "));
