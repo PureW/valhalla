@@ -153,8 +153,8 @@ void test_deadend() {
 
   auto correct_route = std::vector<std::string>{"Bell Lane",
                                                 "Small Street",
-                                                "Quay Street",
-                                                "Quay Street",
+                                                //"Quay Street",
+                                                //"Quay Street",
                                                 "Small Street",
                                                 "",
                                                 ""};
@@ -162,7 +162,7 @@ void test_deadend() {
     throw std::logic_error("Incorrect route, got: \n" + boost::algorithm::join(names, ", ") +
                            ", expected: \n" + boost::algorithm::join(correct_route, ", "));
   }
-  if (uturn_street != "Quay Street") {
+  if (uturn_street != "Small Street") {
     throw std::logic_error("We did not find the expected u-turn");
   }
 }

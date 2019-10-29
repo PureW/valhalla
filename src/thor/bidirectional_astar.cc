@@ -30,7 +30,7 @@ std::string get_shape(GraphReader& graphreader, const GraphId& edgeid) {
 }
 
 bool is_derived_deadend(GraphReader& graphreader,
-                        const GraphTile* tile,
+                        const GraphTile* tile_org,
                         const BDEdgeLabel& pred_edge_label,
                         const DirectedEdge* opp_pred_edge,
                         const std::shared_ptr<sif::DynamicCost>& costing,
@@ -42,6 +42,7 @@ bool is_derived_deadend(GraphReader& graphreader,
   if (!is_forward_search) {
     //expand_node = opp_pred_edge->endnode();
   }
+  const GraphTile* tile = graphreader.GetGraphTile(expand_node, tile_org);
 
   if (is_forward_search) {
     std::cout << "forward " << uint64_t(expand_node) << "\tedge_id: "
