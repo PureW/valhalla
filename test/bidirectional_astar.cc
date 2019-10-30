@@ -78,8 +78,8 @@ boost::property_tree::ptree get_conf() {
 }
 
 struct route_tester {
-  route_tester()
-      : conf(get_conf()), reader(new GraphReader(conf.get_child("mjolnir"))),
+  route_tester(const boost::property_tree::ptree &_conf)
+      : conf(_conf), reader(new GraphReader(conf.get_child("mjolnir"))),
         loki_worker(conf, reader), thor_worker(conf, reader), odin_worker(conf) {
   }
   Api test(const std::string& request_json) {
@@ -98,21 +98,22 @@ struct route_tester {
   odin_worker_t odin_worker;
 };
 
-void build_tiles() {
+void build_tiles(const boost::property_tree::ptree &conf) {
   auto osmdata =
-      valhalla::mjolnir::build_tile_set(get_conf(), {VALHALLA_SOURCE_DIR
+      valhalla::mjolnir::build_tile_set(conf, {VALHALLA_SOURCE_DIR
                                                      "test/data/whitelion_bristol_uk.osm.pbf"});
 }
 
 void test_deadend() {
 
-  // TODO The below call builds the tiles, but the test fails when this runs
-  // test passes the _next_ time after tiles were built...
-  // Disk syncing issues? Race condition?
-  // build_tiles();
-  // return;
+  auto conf = get_conf();
 
-  route_tester tester;
+  // TODO The below call builds the tiles, but the test fails when this runs.
+  // Test passes the _next_ time after tiles were built...
+  // Disk syncing issues? Race condition?
+  //build_tiles(conf);
+
+  route_tester tester(conf);
   std::string request =
       R"({"locations":[{"lat":51.45562646682483,"lon":-2.5952598452568054},{"lat":51.455143447135974,"lon":-2.5958767533302307}],"costing":"auto"})";
   // Test onewayness with this route - oneway works, South-West to North-East
@@ -165,7 +166,6 @@ void test_deadend() {
 }
 
 void TearDown() {
-  // boost::filesystem::remove(to_restriction_file);
 }
 
 } // namespace

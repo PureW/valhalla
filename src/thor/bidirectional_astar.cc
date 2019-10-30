@@ -29,14 +29,16 @@ std::string get_shape(GraphReader& graphreader, const GraphId& edgeid) {
   return midgard::encode(shape);
 }
 
-bool is_derived_deadend(GraphReader& graphreader,
-                        const GraphTile* tile_org,
-                        const BDEdgeLabel& pred_edge_label,
-                        const DirectedEdge* opp_pred_edge,
-                        const std::shared_ptr<sif::DynamicCost>& costing,
-                        const vector<sif::BDEdgeLabel>& edgelabels,
-                        bool is_forward_search,
-                        uint32_t access_mode) {
+// A runtime check to determine whether a node is a deadend or not
+bool check_if_deadend(GraphReader& graphreader,
+                      const GraphTile* tile_org,
+                      const BDEdgeLabel& pred_edge_label,
+                      const DirectedEdge* opp_pred_edge,
+                      const std::shared_ptr<sif::DynamicCost>& costing,
+                      const vector<sif::BDEdgeLabel>& edgelabels,
+                      bool is_forward_search,
+                      uint32_t access_mode) {
+
 
   auto is_derived_deadend_per_layer = [&graphreader, &pred_edge_label, &tile_org, &edgelabels,
                                        is_forward_search, &costing,
@@ -246,9 +248,6 @@ void BidirectionalAStar::ExpandForward(GraphReader& graphreader,
       continue;
     }
 
-    // TODO Make sure edge in first iteration has deadend set correctly
-    //      The following iterations have deadend set correctly from earlier iterations
-
     // Skip this edge if edge is permanently labeled (best path already found
     // to this directed edge), if no access is allowed (based on costing method),
     // or if a complex restriction prevents transition onto this edge.
@@ -298,8 +297,8 @@ void BidirectionalAStar::ExpandForward(GraphReader& graphreader,
                                      (pred.not_thru_pruning() || !directededge->not_thru()));
 
     // Check if the node in question is a deadend
-    bool is_deadend = is_derived_deadend(graphreader, tile, pred, nullptr, costing_,
-                                         edgelabels_forward_, true, access_mode_);
+    bool is_deadend = check_if_deadend(graphreader, tile, pred, nullptr, costing_,
+                                       edgelabels_forward_, true, access_mode_);
     edgelabels_forward_.back().set_deadend(is_deadend);
 
     adjacencylist_forward_->add(idx);
@@ -347,18 +346,9 @@ void BidirectionalAStar::ExpandReverse(GraphReader& graphreader,
   uint32_t shortcuts = 0;
   GraphId edgeid = {node.tileid(), node.level(), nodeinfo->edge_index()};
 
-  // uint64_t filter_edge_id = 1952671530;
-  uint64_t filter_edge_id = 1919117098;
-
   EdgeStatusInfo* es = edgestatus_reverse_.GetPtr(edgeid, tile);
   const DirectedEdge* directededge = tile->directededge(edgeid);
   for (uint32_t i = 0; i < nodeinfo->edge_count(); ++i, ++directededge, ++edgeid, ++es) {
-
-    // std::cout << "ExpandReverse: directededge->endnode(): "<< uint64_t(directededge->endnode()) <<
-    // " edgeid: "<<uint64_t(edgeid)
-    //  <<"\n pred "<<get_shape(graphreader, pred.edgeid())<<" edgeid "<<get_shape(graphreader,
-    //  edgeid)
-    //  <<std::endl;
 
     // Skip shortcut edges until we have stopped expanding on the next level. Use regular
     // edges while still expanding on the next level since we can still transition down to
@@ -368,15 +358,9 @@ void BidirectionalAStar::ExpandReverse(GraphReader& graphreader,
       if (hierarchy_limits_reverse_[edgeid.level() + 1].StopExpanding()) {
         shortcuts |= directededge->shortcut();
       } else {
-        // if (edgeid == filter_edge_id) {
-        //   std::cout << "hierarchy_limits_reverse_"<<std::endl;
-        //}
         continue;
       }
     } else if (shortcuts & directededge->superseded()) {
-      // if (edgeid == filter_edge_id) {
-      //   std::cout << "superseded"<<std::endl;
-      //}
       continue;
     }
 
@@ -384,18 +368,12 @@ void BidirectionalAStar::ExpandReverse(GraphReader& graphreader,
     // directed edge) or if no access for this mode.
     // TODO Why is this check necessary? opp_edge.forwardaccess() is checked in Allowed(...)
     if (es->set() == EdgeSet::kPermanent || !(directededge->reverseaccess() & access_mode_)) {
-      // if (edgeid == filter_edge_id) {
-      //   std::cout << "no access"<<std::endl;
-      //}
       continue;
     }
 
     // Get end node tile, opposing edge Id, and opposing directed edge.
     const GraphTile* t2 =
         directededge->leaves_tile() ? graphreader.GetGraphTile(directededge->endnode()) : tile;
-    // if (t2 == nullptr) {
-    //  continue;
-    //}
     GraphId oppedge_graph_id = t2->GetOpposingEdgeId(directededge);
     const DirectedEdge* opp_edge = t2->directededge(oppedge_graph_id);
 
@@ -406,18 +384,6 @@ void BidirectionalAStar::ExpandReverse(GraphReader& graphreader,
     bool is_restricted =
         costing_->Restricted(directededge, pred, edgelabels_reverse_, tile, edgeid, false);
     if (!is_allowed || is_restricted) {
-      // if (edgeid == filter_edge_id) {
-      //   std::cout << "##########################\n restricted: "<<is_restricted<<" allowed:
-      //   "<<is_allowed
-      //     << "\n!(opp_edge->forwardaccess() & kAutoAccess): "<<!(opp_edge->forwardaccess() &
-      //     kAutoAccess)
-      //     << "\npred.deadend(): "<<pred.deadend()
-      //     << "\n(!pred.deadend() && pred.opp_local_idx() == edge->localedgeidx()):
-      //     "<<(!pred.deadend() && pred.opp_local_idx() == directededge->localedgeidx())
-      //     << "\n(opp_edge->restrictions() & (1 << pred.opp_local_idx())):
-      //     "<<(opp_edge->restrictions() & (1 << pred.opp_local_idx()))
-      //     <<std::endl;
-      //}
       continue;
     }
 
@@ -455,8 +421,8 @@ void BidirectionalAStar::ExpandReverse(GraphReader& graphreader,
                                      (pred.not_thru_pruning() || !directededge->not_thru()));
 
     // Check if the node in question is a deadend
-    bool is_deadend = is_derived_deadend(graphreader, tile, pred, opp_pred_edge, costing_,
-                                         edgelabels_reverse_, false, access_mode_);
+    bool is_deadend = check_if_deadend(graphreader, tile, pred, opp_pred_edge, costing_,
+                                       edgelabels_reverse_, false, access_mode_);
     // std::cout << " is_deadend:" << is_deadend << std::endl;
     edgelabels_reverse_.back().set_deadend(is_deadend);
 
@@ -607,8 +573,9 @@ BidirectionalAStar::GetBestPath(valhalla::Location& origin,
       edgestatus_forward_.Update(fwd_pred.edgeid(), EdgeSet::kPermanent);
 
       // setting this edge as settled
-      if (expansion_callback_)
+      if (expansion_callback_) {
         expansion_callback_(graphreader, "bidirectional_astar", fwd_pred.edgeid(), "s", false);
+      }
 
       // Prune path if predecessor is not a through edge or if the maximum
       // number of upward transitions has been exceeded on this hierarchy level.
@@ -616,6 +583,9 @@ BidirectionalAStar::GetBestPath(valhalla::Location& origin,
           hierarchy_limits_forward_[fwd_pred.endnode().level()].StopExpanding()) {
         continue;
       }
+
+      // TODO Make sure edge in first iteration has deadend set correctly
+      //      The following iterations have deadend set correctly from earlier iterations
 
       // Expand from the end node in forward direction.
       ExpandForward(graphreader, fwd_pred.endnode(), fwd_pred, forward_pred_idx, false);
@@ -628,8 +598,9 @@ BidirectionalAStar::GetBestPath(valhalla::Location& origin,
       edgestatus_reverse_.Update(rev_pred.edgeid(), EdgeSet::kPermanent);
 
       // setting this edge as settled, sending the opposing because this is the reverse tree
-      if (expansion_callback_)
+      if (expansion_callback_) {
         expansion_callback_(graphreader, "bidirectional_astar", rev_pred.opp_edgeid(), "s", false);
+      }
 
       // Prune path if predecessor is not a through edge
       if ((rev_pred.not_thru() && rev_pred.not_thru_pruning()) ||
@@ -691,8 +662,9 @@ bool BidirectionalAStar::SetForwardConnection(GraphReader& graphreader, const BD
   }
 
   // setting this edge as connected
-  if (expansion_callback_)
+  if (expansion_callback_) {
     expansion_callback_(graphreader, "bidirectional_astar", pred.edgeid(), "c", false);
+  }
 
   return true;
 }
@@ -738,8 +710,9 @@ bool BidirectionalAStar::SetReverseConnection(GraphReader& graphreader, const BD
   }
 
   // setting this edge as connected, sending the opposing because this is the reverse tree
-  if (expansion_callback_)
+  if (expansion_callback_) {
     expansion_callback_(graphreader, "bidirectional_astar", oppedge, "c", false);
+  }
 
   return true;
 }
@@ -806,8 +779,9 @@ void BidirectionalAStar::SetOrigin(GraphReader& graphreader, valhalla::Location&
     adjacencylist_forward_->add(idx);
 
     // setting this edge as reached
-    if (expansion_callback_)
+    if (expansion_callback_) {
       expansion_callback_(graphreader, "bidirectional_astar", edgeid, "r", false);
+    }
 
     // Set the initial not_thru flag to false. There is an issue with not_thru
     // flags on small loops. Set this to false here to override this for now.
