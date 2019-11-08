@@ -392,16 +392,19 @@ bool AutoCost::Allowed(const baldr::DirectedEdge* edge,
     const std::vector<baldr::AccessRestriction>& restrictions =
         tile->GetAccessRestrictions(edgeid.id(), kAutoAccess);
     for (const auto& restriction : restrictions) {
-      if (restriction.type() == AccessType::kTimedAllowed) {
-        // allowed at this range or allowed all the time
-        return (current_time && restriction.value())
-                   ? IsRestricted(restriction.value(), current_time, tz_index)
-                   : true;
-      } else if (restriction.type() == AccessType::kTimedDenied) {
-        // not allowed at this range or restricted all the time
-        return (current_time && restriction.value())
-                   ? !IsRestricted(restriction.value(), current_time, tz_index)
-                   : false;
+
+      if (current_time == 0) {
+        // No time supplied so ignore time-based restrictions
+        return true;
+      } else {
+        // Compare the time to the time-based restrictions
+        if (restriction.type() == AccessType::kTimedAllowed) {
+          // allowed at this range or allowed all the time
+          return IsRestricted(restriction.value(), current_time, tz_index);
+        } else if (restriction.type() == AccessType::kTimedDenied) {
+          // not allowed at this range or restricted all the time
+          return !IsRestricted(restriction.value(), current_time, tz_index);
+        }
       }
     }
   }
